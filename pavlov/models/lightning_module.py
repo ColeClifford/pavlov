@@ -9,6 +9,9 @@ import torch
 from omegaconf import DictConfig
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
+from pavlov.evaluation.modality_alignment import log_modality_alignment
+from pavlov.evaluation.visualization import log_tsne_embeddings
+from pavlov.evaluation.rotation_viz import log_rotation_matrices
 from pavlov.evaluation.sample_logging import log_sample_reconstructions
 from pavlov.losses import contrastive_loss, orthogonality_loss, reconstruction_loss
 from pavlov.models.pavlov_model import PavlovModel
@@ -50,9 +53,12 @@ class PavlovLightningModule(pl.LightningModule):
 
         # Same-modal reconstruction
         same_loss = torch.tensor(0.0, device=self.device)
-        for m in z:
+        modality_keys = list(z.keys())
+        for m in modality_keys:
             x_recon = self.model.decode(z[m], m)
-            same_loss = same_loss + reconstruction_loss(x_recon, batch[m])
+            mse = reconstruction_loss(x_recon, batch[m])
+            same_loss = same_loss + mse
+            self.log(f"{prefix}/mse/{m}/same_modal", mse, prog_bar=False)
         same_loss = same_loss / max(len(z), 1)
         total_loss = total_loss + self.w_same * same_loss
         self.log(f"{prefix}/same_modal_recon", same_loss, prog_bar=False)
@@ -60,12 +66,13 @@ class PavlovLightningModule(pl.LightningModule):
         # Cross-modal reconstruction
         cross_loss = torch.tensor(0.0, device=self.device)
         n_cross = 0
-        modality_keys = list(z.keys())
         for src in modality_keys:
             for tgt in modality_keys:
                 if src != tgt:
                     x_recon = self.model.decode(z[src], tgt)
-                    cross_loss = cross_loss + reconstruction_loss(x_recon, batch[tgt])
+                    mse = reconstruction_loss(x_recon, batch[tgt])
+                    cross_loss = cross_loss + mse
+                    self.log(f"{prefix}/mse/{tgt}/cross_from_{src}", mse, prog_bar=False)
                     n_cross += 1
         if n_cross > 0:
             cross_loss = cross_loss / n_cross
@@ -115,6 +122,7 @@ class PavlovLightningModule(pl.LightningModule):
         experiment = getattr(self.logger, "experiment", None)
         if experiment is None or not hasattr(experiment, "add_image"):
             return
+        log_audio = getattr(self.cfg.training, "log_audio_samples", True)
         log_sample_reconstructions(
             self,
             self._val_sample_batch,
@@ -122,7 +130,19 @@ class PavlovLightningModule(pl.LightningModule):
             step=self.current_epoch,
             n_samples=8,
             modalities=self.modalities,
+            log_audio=log_audio,
         )
+        if getattr(self.cfg.training, "log_rotation_matrices", True):
+            log_rotation_matrices(self, experiment, self.current_epoch, self.modalities)
+        if getattr(self.cfg.training, "log_modality_alignment", True):
+            val_loader = self.trainer.datamodule.val_dataloader()
+            log_modality_alignment(self, val_loader, experiment, self.current_epoch, self.modalities)
+        log_tsne_every = getattr(self.cfg.training, "log_tsne_every_n_epochs", 0)
+        if log_tsne_every > 0 and (self.current_epoch + 1) % log_tsne_every == 0:
+            val_loader = self.trainer.datamodule.val_dataloader()
+            log_tsne_embeddings(
+                self, val_loader, experiment, self.current_epoch, self.modalities, max_samples=500
+            )
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(

@@ -56,7 +56,18 @@ def evaluate_cross_modal_transfer(
     train_accuracy = clf.score(train_embeddings, labels)
     transfer_accuracy = clf.score(test_embeddings, labels)
 
+    # Per-class transfer accuracy
+    test_preds = clf.predict(test_embeddings)
+    per_class: dict[int, float] = {}
+    for c in range(10):
+        mask = labels == c
+        if mask.sum() > 0:
+            per_class[c] = (test_preds[mask] == labels[mask]).mean().item()
+        else:
+            per_class[c] = 0.0
+
     return {
         "train_accuracy": train_accuracy,
         "transfer_accuracy": transfer_accuracy,
+        "per_class_transfer_accuracy": per_class,
     }

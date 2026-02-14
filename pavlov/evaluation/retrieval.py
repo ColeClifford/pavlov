@@ -76,7 +76,19 @@ def evaluate_retrieval(
     ap = (precision_at_i * relevant).sum(dim=1) / relevant.sum(dim=1).clamp(min=1)
     mean_ap = ap.mean().item()
 
+    # Per-class Recall@K
+    per_class_recall: dict[int, float] = {}
+    for c in range(10):
+        mask = query_labels.squeeze(1) == c
+        if mask.sum() > 0:
+            per_class_recall[c] = (
+                relevant[mask, :k].sum(dim=1).clamp(max=1).mean().item()
+            )
+        else:
+            per_class_recall[c] = 0.0
+
     return {
         f"recall_at_{k}": recall_at_k,
         "mean_average_precision": mean_ap,
+        "per_class_recall_at_k": per_class_recall,
     }

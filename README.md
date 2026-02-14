@@ -59,8 +59,11 @@ pavlov-train +experiment=baseline
 ```bash
 pavlov-eval +checkpoint=path/to/checkpoint.ckpt
 
-# Also log sample reconstructions to TensorBoard
+# Full diagnostic suite: samples, audio, rotation matrices, t-SNE, per-digit metrics
 pavlov-eval "+checkpoint=path/to/checkpoint.ckpt" +log_tensorboard=true
+
+# Include missing-modality robustness evaluation
+pavlov-eval "+checkpoint=path/to/checkpoint.ckpt" +log_tensorboard=true +eval_missing_modality=true
 ```
 
 ### 4. Visualize embeddings
@@ -74,7 +77,7 @@ pavlov-viz "+checkpoint=path/to/checkpoint.ckpt" +save_path=embeddings.png +log_
 
 ### 5. View TensorBoard
 
-Training outputs (logs, checkpoints, Hydra config) are written to `outputs/YYYY-MM-DD/HH-MM-SS/` per run. During validation, sample reconstructions (ground truth, same-modal, cross-modal) are logged for visual inspection. To view TensorBoard:
+Training outputs (logs, checkpoints, Hydra config) are written to `outputs/YYYY-MM-DD/HH-MM-SS/` per run. During validation, the following are logged: sample reconstructions (images + audio), rotation matrix heatmaps, modality alignment metrics, and t-SNE (every 5 epochs). With `pavlov-eval +log_tensorboard=true`, the full diagnostic suite is logged. To view TensorBoard:
 
 ```bash
 tensorboard --logdir outputs/

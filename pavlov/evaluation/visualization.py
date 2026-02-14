@@ -15,22 +15,27 @@ from torch.utils.data import DataLoader
 def plot_embeddings(
     model,
     dataloader: DataLoader,
-    save_path: str | Path,
+    save_path: str | Path | None = None,
     modalities: list[str] | None = None,
     max_samples: int = 2000,
     perplexity: float = 30.0,
-) -> None:
-    """Extract embeddings, run t-SNE, and save a scatter plot.
+    return_figure: bool = False,
+):
+    """Extract embeddings, run t-SNE, and save or return a scatter plot.
 
     Points are colored by digit class with different markers per modality.
 
     Args:
         model: PavlovModel (or LightningModule with .model attribute).
         dataloader: DataLoader yielding dicts with modality keys and 'label'.
-        save_path: Path to save the output figure.
+        save_path: Path to save the output figure. Required unless return_figure=True.
         modalities: Modalities to plot. Defaults to all in the first batch.
         max_samples: Max samples per modality to keep plot readable.
         perplexity: t-SNE perplexity parameter.
+        return_figure: If True, return the figure without saving. save_path ignored.
+
+    Returns:
+        matplotlib Figure if return_figure=True, else None.
     """
     pavlov_model = getattr(model, "model", model)
     pavlov_model.eval()
@@ -99,8 +104,35 @@ def plot_embeddings(
     ax.set_xlabel("t-SNE 1")
     ax.set_ylabel("t-SNE 2")
 
+    if return_figure:
+        return fig
+
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved embedding visualization to {save_path}")
+
+
+def log_tsne_embeddings(
+    model,
+    dataloader: DataLoader,
+    writer,
+    step: int,
+    modalities: list[str] | None = None,
+    max_samples: int = 500,
+) -> None:
+    """Compute t-SNE on embeddings and log figure to TensorBoard."""
+    if not hasattr(writer, "add_figure"):
+        return
+    fig = plot_embeddings(
+        model,
+        dataloader,
+        save_path=None,
+        modalities=modalities,
+        max_samples=max_samples,
+        return_figure=True,
+    )
+    if fig is not None:
+        writer.add_figure("embeddings/tsne", fig, step)
+        plt.close(fig)

@@ -7,5 +7,7 @@ defaults:
 seed: 42
 modalities: [vision, audio]
 
-# For pavlov-eval and pavlov-viz: set +log_tensorboard=true to log sample reconstructions
+# For pavlov-eval and pavlov-viz: set +log_tensorboard=true to log full diagnostics
 log_tensorboard: false
+# For pavlov-eval: set +eval_missing_modality=true to evaluate missing-modality robustness
+eval_missing_modality: false
