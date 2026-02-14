@@ -1,0 +1,20 @@
+embed_dim: 256
+latent_dim: 128
+init_rotation_std: 0.01
+
+vision_encoder:
+  hidden_dims: [32, 64, 128]
+  input_channels: 1
+  input_size: 64
+
+audio_encoder:
+  hidden_dims: [32, 64, 128, 256]
+  dropout: 0.3
+
+vision_decoder:
+  hidden_dims: [128, 64, 32]
+  output_channels: 1
+  output_size: 64
+
+audio_decoder:
+  hidden_dims: [256, 128, 64, 32, 16]

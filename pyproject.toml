@@ -23,6 +23,8 @@ dependencies = [
     "pillow",
     "tqdm",
     "soundfile",
+    "huggingface_hub",
+    "opencv-python",
 ]
 
 [project.optional-dependencies]

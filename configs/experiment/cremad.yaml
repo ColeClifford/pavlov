@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - /data: cremad
+  - /model: cremad
+
+training:
+  max_epochs: 100
+  lr: 1e-3
+  loss_weights:
+    same_modal_recon: 1.0
+    cross_modal_recon: 1.0
+    contrastive: 0.5
+    orthogonality: 0.01

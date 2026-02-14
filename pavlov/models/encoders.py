@@ -24,18 +24,48 @@ class ModalityEncoder(ABC, nn.Module):
 
 
 class VisionEncoder(ModalityEncoder):
-    """CNN encoder for 1x28x28 grayscale images (MNIST)."""
+    """CNN encoder for grayscale or RGB images of arbitrary spatial size.
 
-    def __init__(self, embed_dim: int):
+    For small inputs (< 64px), uses the original AV-MNIST architecture
+    (2 conv layers, direct flatten) for checkpoint compatibility.
+    For larger inputs, uses a deeper stack with BatchNorm and adaptive
+    pooling so the FC layer size is independent of spatial resolution.
+    """
+
+    def __init__(
+        self,
+        embed_dim: int,
+        input_channels: int = 1,
+        input_size: int = 28,
+    ):
         super().__init__()
         self._embed_dim = embed_dim
-        self.conv = nn.Sequential(
-            nn.Conv2d(1, 32, 3, stride=2, padding=1),  # -> 32x14x14
-            nn.ReLU(),
-            nn.Conv2d(32, 64, 3, stride=2, padding=1),  # -> 64x7x7
-            nn.ReLU(),
-        )
-        self.fc = nn.Linear(64 * 7 * 7, embed_dim)
+        self._use_pool = input_size >= 64
+
+        if self._use_pool:
+            self.conv = nn.Sequential(
+                nn.Conv2d(input_channels, 32, 3, stride=2, padding=1),
+                nn.BatchNorm2d(32),
+                nn.ReLU(),
+                nn.Conv2d(32, 64, 3, stride=2, padding=1),
+                nn.BatchNorm2d(64),
+                nn.ReLU(),
+                nn.Conv2d(64, 128, 3, stride=2, padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(),
+            )
+            self.pool = nn.AdaptiveAvgPool2d((4, 4))
+            self.fc = nn.Linear(128 * 4 * 4, embed_dim)
+        else:
+            # Original AV-MNIST architecture — preserves checkpoint compat
+            self.conv = nn.Sequential(
+                nn.Conv2d(input_channels, 32, 3, stride=2, padding=1),  # -> 32x14x14
+                nn.ReLU(),
+                nn.Conv2d(32, 64, 3, stride=2, padding=1),  # -> 64x7x7
+                nn.ReLU(),
+            )
+            self.pool = None
+            self.fc = nn.Linear(64 * 7 * 7, embed_dim)
 
     @property
     def output_dim(self) -> int:
@@ -43,6 +73,8 @@ class VisionEncoder(ModalityEncoder):
 
     def forward(self, x):
         h = self.conv(x)
+        if self.pool is not None:
+            h = self.pool(h)
         h = h.flatten(1)
         return self.fc(h)
 
@@ -96,14 +128,22 @@ def build_encoder(modality: str, cfg) -> ModalityEncoder:
 
     Args:
         modality: One of "vision" or "audio".
-        cfg: Config object with an embed_dim attribute.
+        cfg: Config object with an embed_dim attribute and optional
+            vision_encoder / audio_encoder sub-configs.
 
     Returns:
         A ModalityEncoder instance.
     """
     embed_dim = cfg.embed_dim
     if modality == "vision":
-        return VisionEncoder(embed_dim)
+        ve_cfg = getattr(cfg, "vision_encoder", None)
+        input_channels = getattr(ve_cfg, "input_channels", 1) if ve_cfg else 1
+        input_size = getattr(ve_cfg, "input_size", 28) if ve_cfg else 28
+        return VisionEncoder(
+            embed_dim,
+            input_channels=input_channels,
+            input_size=input_size,
+        )
     elif modality == "audio":
         return AudioEncoder(embed_dim)
     else:

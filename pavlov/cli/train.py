@@ -22,10 +22,10 @@ _CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 def main(cfg: DictConfig) -> None:
     pl.seed_everything(cfg.seed)
 
-    from pavlov.data.avmnist import AVMNISTDataModule
+    from pavlov.data import build_datamodule
     from pavlov.models.lightning_module import PavlovLightningModule
 
-    datamodule = AVMNISTDataModule(**cfg.data)
+    datamodule = build_datamodule(cfg)
     model = PavlovLightningModule(cfg)
 
     # Optional torch.compile for PyTorch 2.0+ graph optimizations

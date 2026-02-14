@@ -17,7 +17,7 @@ _CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 def main(cfg: DictConfig) -> None:
     pl.seed_everything(cfg.seed)
 
-    from pavlov.data.avmnist import AVMNISTDataModule
+    from pavlov.data import build_datamodule
     from pavlov.evaluation.cross_modal_transfer import evaluate_cross_modal_transfer
     from pavlov.evaluation.retrieval import evaluate_retrieval
     from pavlov.evaluation.sample_logging import log_samples_from_dataloader
@@ -35,7 +35,7 @@ def main(cfg: DictConfig) -> None:
     )
     model.eval()
 
-    datamodule = AVMNISTDataModule(**cfg.data)
+    datamodule = build_datamodule(cfg)
     datamodule.setup("test")
     test_loader = datamodule.test_dataloader()
 
