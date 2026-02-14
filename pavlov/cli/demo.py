@@ -74,8 +74,10 @@ def spectrogram_to_image(spec: torch.Tensor | np.ndarray) -> np.ndarray:
     fig.tight_layout(pad=0)
     fig.canvas.draw()
 
+    # buffer_rgba() is the modern replacement for the removed tostring_rgb()
     w, h = fig.canvas.get_width_height()
-    img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8).reshape(h, w, 3)
+    buf = np.asarray(fig.canvas.buffer_rgba()).reshape(h, w, 4)
+    img = buf[:, :, :3].copy()  # drop alpha, copy to own memory
     plt.close(fig)
     return img
 
@@ -212,6 +214,7 @@ def main():
         "--data-dir", type=str, default="data",
         help="Path to data directory containing avmnist/",
     )
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to (e.g. 0.0.0.0)")
     parser.add_argument("--port", type=int, default=7860)
     parser.add_argument("--share", action="store_true", help="Create public Gradio link")
     args = parser.parse_args()
@@ -222,7 +225,7 @@ def main():
     print(f"Loaded. Test set has {len(dataset)} samples.")
 
     app = build_app(model, dataset)
-    app.launch(server_port=args.port, share=args.share)
+    app.launch(server_name=args.host, server_port=args.port, share=args.share)
 
 
 if __name__ == "__main__":
