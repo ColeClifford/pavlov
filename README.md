@@ -51,7 +51,8 @@ pip install -e ".[wandb]"
 # Download AV-MNIST (default)
 pavlov-download
 
-# Download CREMA-D (from HuggingFace — requires huggingface_hub + opencv-python)
+# Download CREMA-D (~7.5 GB — requires git-lfs + opencv-python)
+# Install git-lfs first: brew install git-lfs && git lfs install (macOS)
 pavlov-download data=cremad
 ```
 

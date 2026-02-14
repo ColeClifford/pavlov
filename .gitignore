@@ -16,7 +16,7 @@ venv/
 env/
 
 # Data and outputs
-./data/
+/data/
 outputs/
 logs/
 wandb/

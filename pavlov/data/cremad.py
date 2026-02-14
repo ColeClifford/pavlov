@@ -4,7 +4,8 @@ CREMA-D (Crowd-sourced Emotional Multimodal Actors Dataset) contains 7,442
 audio-visual clips from 91 actors expressing 6 emotions: anger, disgust,
 fear, happiness, sadness, and neutral.
 
-Download source: HuggingFace (MahiA/CREMA-D).
+Download source: Original GitHub repo (CheyneyComputerScience/CREMA-D) via
+git-lfs, which provides both AudioWAV/ and VideoFlash/ directories.
 """
 
 from __future__ import annotations
@@ -43,36 +44,78 @@ def _parse_cremad_filename(stem: str) -> tuple[str, str, str, str]:
     return parts[0], parts[1], parts[2], parts[3]
 
 
-def download_cremad(data_dir: str | Path) -> Path:
-    """Download CREMA-D from HuggingFace.
+CREMAD_REPO_URL = "https://github.com/CheyneyComputerScience/CREMA-D.git"
+CREMAD_MIRROR_URL = "https://gitlab.com/cs-cooper-lab/crema-d-mirror.git"
 
-    Returns path to the downloaded directory containing audio files and
-    CSV metadata.
+
+def download_cremad(data_dir: str | Path) -> Path:
+    """Download CREMA-D from the original GitHub repo (requires git-lfs).
+
+    The repo contains AudioWAV/ and VideoFlash/ directories with the
+    paired audio and video files needed for multimodal training.
+
+    Falls back to a GitLab mirror if the GitHub clone fails.
+
+    Returns path to the cloned repository root.
     """
-    import huggingface_hub
+    import shutil
+    import subprocess
 
     data_dir = Path(data_dir)
     cremad_raw = data_dir / "cremad_raw"
 
-    if cremad_raw.exists() and (cremad_raw / "audios").exists():
-        wav_count = len(list((cremad_raw / "audios").glob("*.wav")))
-        if wav_count > 7000:
+    # Check if already downloaded with actual audio+video content
+    audio_dir = cremad_raw / "AudioWAV"
+    video_dir = cremad_raw / "VideoFlash"
+    if audio_dir.exists() and video_dir.exists():
+        wav_count = len(list(audio_dir.glob("*.wav")))
+        flv_count = len(list(video_dir.glob("*.flv")))
+        if wav_count > 7000 and flv_count > 7000:
             log.info(
-                "CREMA-D already downloaded at %s (%d files), skipping.",
+                "CREMA-D already downloaded at %s (%d audio, %d video), skipping.",
                 cremad_raw,
                 wav_count,
+                flv_count,
             )
             return cremad_raw
 
-    log.info("Downloading CREMA-D from HuggingFace to %s ...", cremad_raw)
+    # Verify git-lfs is installed
+    try:
+        subprocess.run(
+            ["git", "lfs", "version"],
+            check=True,
+            capture_output=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        raise RuntimeError(
+            "git-lfs is required to download CREMA-D video files. "
+            "Install it with: brew install git-lfs && git lfs install "
+            "(macOS) or apt install git-lfs && git lfs install (Linux)."
+        )
+
     cremad_raw.mkdir(parents=True, exist_ok=True)
-    huggingface_hub.snapshot_download(
-        repo_id="MahiA/CREMA-D",
-        repo_type="dataset",
-        local_dir=str(cremad_raw),
+
+    # Try GitHub first, fall back to GitLab mirror
+    for url in [CREMAD_REPO_URL, CREMAD_MIRROR_URL]:
+        log.info("Cloning CREMA-D from %s (~7.5 GB, this may take a while) ...", url)
+        try:
+            subprocess.run(
+                ["git", "clone", url, str(cremad_raw)],
+                check=True,
+            )
+            log.info("CREMA-D download complete at %s", cremad_raw)
+            return cremad_raw
+        except subprocess.CalledProcessError as e:
+            log.warning("Clone from %s failed: %s", url, e)
+            # Clean up partial clone before trying mirror
+            if cremad_raw.exists():
+                shutil.rmtree(cremad_raw)
+            cremad_raw.mkdir(parents=True, exist_ok=True)
+
+    raise RuntimeError(
+        "Failed to download CREMA-D from both GitHub and GitLab mirror. "
+        "Check your internet connection and git-lfs installation."
     )
-    log.info("CREMA-D download complete at %s", cremad_raw)
-    return cremad_raw
 
 
 def _generate_spectrogram(
@@ -136,29 +179,56 @@ def _extract_video_frame(
 
 
 def _discover_samples(raw_dir: Path) -> list[dict]:
-    """Discover audio (and optionally video) files from the CREMA-D download.
+    """Discover paired audio+video files from the CREMA-D clone.
+
+    Looks for the canonical directory layout from the GitHub repo:
+      - AudioWAV/  (wav files)
+      - VideoFlash/ (flv files)
+
+    Falls back to alternative names (audios/, videos/) if needed.
 
     Returns a list of dicts with keys: 'audio_path', 'video_path' (or None),
     'emotion', 'actor_id'.
     """
-    audio_dir = raw_dir / "audios"
-    video_dir = raw_dir / "videos"  # may not exist depending on HF snapshot
+    # Try canonical GitHub repo layout first, then alternatives
+    audio_dir = None
+    for candidate in ["AudioWAV", "audios"]:
+        d = raw_dir / candidate
+        if d.exists() and any(d.glob("*.wav")):
+            audio_dir = d
+            break
+    if audio_dir is None:
+        # Last resort: wav files in the root
+        if any(raw_dir.glob("*.wav")):
+            audio_dir = raw_dir
+        else:
+            raise FileNotFoundError(
+                f"No .wav files found in {raw_dir}. "
+                f"Check that CREMA-D downloaded correctly."
+            )
 
-    # Also check for alternative layout (some HF downloads have flat structure)
-    if not audio_dir.exists():
-        # Try flat wav files
-        audio_dir = raw_dir
-    if not video_dir.exists():
-        video_dir = None
+    video_dir = None
+    for candidate in ["VideoFlash", "videos"]:
+        d = raw_dir / candidate
+        if d.exists() and (any(d.glob("*.flv")) or any(d.glob("*.mp4"))):
+            video_dir = d
+            break
 
     wav_files = sorted(audio_dir.glob("*.wav"))
-    if not wav_files:
-        raise FileNotFoundError(
-            f"No .wav files found in {audio_dir}. "
-            f"Check that CREMA-D downloaded correctly."
+    log.info(
+        "Found %d audio files in %s, video dir: %s",
+        len(wav_files),
+        audio_dir.name,
+        video_dir.name if video_dir else "NONE (audio-only)",
+    )
+    if video_dir is None:
+        log.warning(
+            "No video directory found! Vision frames will be blank. "
+            "Make sure git-lfs is installed and the repo was cloned fully."
         )
 
     samples = []
+    videos_found = 0
     for wav_path in wav_files:
         stem = wav_path.stem
         try:
@@ -173,11 +243,11 @@ def _discover_samples(raw_dir: Path) -> list[dict]:
 
         video_path = None
         if video_dir is not None:
-            # CREMA-D videos are .flv or .mp4
             for ext in [".flv", ".mp4", ".avi"]:
                 candidate = video_dir / (stem + ext)
                 if candidate.exists():
                     video_path = candidate
+                    videos_found += 1
                     break
 
         samples.append({
@@ -187,7 +257,12 @@ def _discover_samples(raw_dir: Path) -> list[dict]:
             "actor_id": actor_id,
         })
 
-    log.info("Discovered %d CREMA-D samples", len(samples))
+    log.info(
+        "Discovered %d CREMA-D samples (%d with video, %d audio-only)",
+        len(samples),
+        videos_found,
+        len(samples) - videos_found,
+    )
     return samples
 
 
@@ -223,6 +298,23 @@ def prepare_cremad(
     samples = _discover_samples(raw_dir)
     if not samples:
         raise RuntimeError("No valid CREMA-D samples found after discovery.")
+
+    # Check that video files exist — training on blank frames is useless
+    n_with_video = sum(1 for s in samples if s["video_path"] is not None)
+    if n_with_video == 0:
+        raise RuntimeError(
+            "CREMA-D download has NO video files — all vision data would be blank. "
+            "This usually means git-lfs was not installed when cloning. Fix:\n"
+            "  1. Install git-lfs: brew install git-lfs && git lfs install\n"
+            "  2. Delete the data: rm -rf data/cremad_raw data/cremad\n"
+            "  3. Re-download: pavlov-download data=cremad"
+        )
+    elif n_with_video < len(samples):
+        log.warning(
+            "%d / %d samples are missing video files — those will use blank frames.",
+            len(samples) - n_with_video,
+            len(samples),
+        )
 
     rng = np.random.default_rng(seed)
 
