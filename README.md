@@ -83,6 +83,26 @@ Training outputs (logs, checkpoints, Hydra config) are written to `outputs/YYYY-
 tensorboard --logdir outputs/
 ```
 
+### 6. Interactive demo
+
+Launch a Gradio app to explore same-modal and cross-modal reconstructions interactively:
+
+```bash
+# Install the demo extra
+pip install -e ".[demo]"
+
+# Auto-selects the best checkpoint from outputs/
+pavlov-demo
+
+# Or specify a checkpoint explicitly
+pavlov-demo --checkpoint path/to/checkpoint.ckpt
+
+# Create a public shareable link
+pavlov-demo --share
+```
+
+The app has two tabs — **Vision Input** and **Audio Input**. Click "New Sample" to pick a random test example and see the original input alongside its same-modal reconstruction and cross-modal reconstruction (e.g., image → synthesized audio spectrogram, or audio → reconstructed image).
+
 ## Configuration
 
 Pavlov uses [Hydra](https://hydra.cc/) for configuration management. All configs live in `configs/`.
@@ -135,6 +155,7 @@ pavlov/
     eval.py              # Evaluation entry point
     viz.py               # Visualization entry point
     download_data.py     # Data download script
+    demo.py              # Interactive Gradio demo
 configs/
   ...                    # Hydra configuration files
 ```
