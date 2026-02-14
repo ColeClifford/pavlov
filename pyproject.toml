@@ -27,6 +27,7 @@ dependencies = [
 
 [project.optional-dependencies]
 wandb = ["wandb>=0.15"]
+demo = ["gradio>=4.0"]
 dev = ["pytest>=7.3", "ruff>=0.4"]
 
 [project.scripts]
@@ -34,6 +35,7 @@ pavlov-train = "pavlov.cli.train:main"
 pavlov-eval = "pavlov.cli.eval:main"
 pavlov-viz = "pavlov.cli.viz:main"
 pavlov-download = "pavlov.cli.download_data:main"
+pavlov-demo = "pavlov.cli.demo:main"
 
 [tool.setuptools.packages.find]
 include = ["pavlov*"]
