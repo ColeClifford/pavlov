@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pavlov"
+version = "0.1.0"
+description = "Unified multimodal embeddings with geometric modality conditioning"
+requires-python = ">=3.9"
+dependencies = [
+    "torch",
+    "pytorch-lightning",
+    "hydra-core",
+    "omegaconf",
+    "torchvision",
+    "torchaudio",
+    "numpy",
+    "scipy",
+    "scikit-learn",
+    "matplotlib",
+    "tensorboard",
+    "librosa",
+    "pillow",
+    "tqdm",
+    "soundfile",
+]
+
+[project.optional-dependencies]
+wandb = ["wandb>=0.15"]
+dev = ["pytest>=7.3", "ruff>=0.4"]
+
+[project.scripts]
+pavlov-train = "pavlov.cli.train:main"
+pavlov-eval = "pavlov.cli.eval:main"
+pavlov-viz = "pavlov.cli.viz:main"
+pavlov-download = "pavlov.cli.download_data:main"
+
+[tool.setuptools.packages.find]
+include = ["pavlov*"]

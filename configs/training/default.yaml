@@ -1,0 +1,20 @@
+max_epochs: 100
+lr: 1e-3
+weight_decay: 1e-5
+
+# Log sample reconstructions to TensorBoard every N validation epochs (1 = every epoch)
+log_samples_every_n_epochs: 1
+
+loss_weights:
+  same_modal_recon: 1.0
+  cross_modal_recon: 0.5
+  contrastive: 0.0
+  orthogonality: 0.01
+
+scheduler: cosine
+warmup_epochs: 5
+logger: tensorboard
+
+wandb:
+  project: pavlov
+  entity: null

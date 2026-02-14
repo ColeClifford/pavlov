@@ -1,0 +1,8 @@
+# @package _global_
+model:
+  latent_dim: 128
+  embed_dim: 256
+
+training:
+  max_epochs: 100
+  lr: 1e-3

@@ -1,0 +1,11 @@
+defaults:
+  - model: default
+  - data: avmnist
+  - training: default
+  - _self_
+
+seed: 42
+modalities: [vision, audio]
+
+# For pavlov-eval and pavlov-viz: set +log_tensorboard=true to log sample reconstructions
+log_tensorboard: false
