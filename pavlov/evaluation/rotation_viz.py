@@ -21,14 +21,14 @@ def log_rotation_matrices(model, writer, step: int, modalities: list[str] | None
         return
 
     for m in modalities:
-        R = pavlov_model.get_rotation(m).detach().cpu()
+        R = pavlov_model.get_rotation(m).detach().float().cpu()
         # Normalize for visibility: scale to [0, 1] for display
         r_min, r_max = R.min().item(), R.max().item()
         if r_max - r_min > 1e-8:
             R_norm = (R - r_min) / (r_max - r_min)
         else:
             R_norm = torch.zeros_like(R)
-        img = R_norm.unsqueeze(0).unsqueeze(0)  # (1, 1, d, d)
+        img = R_norm.unsqueeze(0)  # (1, d, d) — CHW format
         writer.add_image(f"geometry/R_{m}", img, step)
 
         # Orthogonality check: R @ R.T should be I (identity)
@@ -36,19 +36,23 @@ def log_rotation_matrices(model, writer, step: int, modalities: list[str] | None
         ortho_norm = (ortho + 1) / 2  # Map [-1,1] to [0,1] for visibility
         writer.add_image(
             f"geometry/orthogonality_check_{m}",
-            ortho_norm.unsqueeze(0).unsqueeze(0),
+            ortho_norm.unsqueeze(0),  # (1, d, d) — CHW format
             step,
         )
 
     # Relative rotations between modality pairs
     for i, m1 in enumerate(modalities):
         for m2 in modalities[i + 1 :]:
-            R1 = pavlov_model.get_rotation(m1).detach().cpu()
-            R2 = pavlov_model.get_rotation(m2).detach().cpu()
-            R_rel = (R1.T @ R2).unsqueeze(0).unsqueeze(0)
+            R1 = pavlov_model.get_rotation(m1).detach().float().cpu()
+            R2 = pavlov_model.get_rotation(m2).detach().float().cpu()
+            R_rel = R1.T @ R2
             r_min, r_max = R_rel.min().item(), R_rel.max().item()
             if r_max - r_min > 1e-8:
                 R_rel_norm = (R_rel - r_min) / (r_max - r_min)
             else:
                 R_rel_norm = torch.zeros_like(R_rel)
-            writer.add_image(f"geometry/R_relative_{m1}_{m2}", R_rel_norm, step)
+            writer.add_image(
+                f"geometry/R_relative_{m1}_{m2}",
+                R_rel_norm.unsqueeze(0),  # (1, d, d) — CHW format
+                step,
+            )
