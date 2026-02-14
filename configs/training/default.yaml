@@ -14,8 +14,8 @@ log_modality_alignment: true
 
 loss_weights:
   same_modal_recon: 1.0
-  cross_modal_recon: 0.5
-  contrastive: 0.0
+  cross_modal_recon: 1.0
+  contrastive: 0.5
   orthogonality: 0.01
 
 scheduler: cosine

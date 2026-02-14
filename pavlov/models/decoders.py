@@ -38,24 +38,39 @@ class VisionDecoder(ModalityDecoder):
 
 
 class AudioDecoder(ModalityDecoder):
-    """Transposed-CNN decoder producing 1x112x112 spectrograms."""
+    """Transposed-CNN decoder producing 1x112x112 spectrograms.
+
+    Mirrors the upgraded AudioEncoder: deeper, with BatchNorm, starting
+    from a 256x4x4 spatial layout to match the encoder's adaptive pool.
+    """
 
     def __init__(self, embed_dim: int):
         super().__init__()
-        self.fc = nn.Linear(embed_dim, 128 * 14 * 14)
+        self.fc = nn.Linear(embed_dim, 256 * 4 * 4)
         self.deconv = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1),  # -> 64x28x28
+            nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1),  # -> 128x8x8
+            nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1),  # -> 32x56x56
+            nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1),   # -> 64x16x16
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.ConvTranspose2d(32, 1, 4, stride=2, padding=1),  # -> 1x112x112
+            nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1),    # -> 32x32x32
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.ConvTranspose2d(32, 16, 4, stride=2, padding=1),    # -> 16x64x64
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, 1, 4, stride=2, padding=1),     # -> 1x128x128
             nn.Sigmoid(),
         )
+        # Crop/interpolate to exact 112x112 target size
+        self.resize = nn.AdaptiveAvgPool2d((112, 112))
 
     def forward(self, h):
         h = self.fc(h)
-        h = h.view(-1, 128, 14, 14)
-        return self.deconv(h)
+        h = h.view(-1, 256, 4, 4)
+        h = self.deconv(h)
+        return self.resize(h)
 
 
 def build_decoder(modality: str, cfg) -> ModalityDecoder:

@@ -6,10 +6,11 @@ vision_encoder:
   hidden_dims: [32, 64]
 
 audio_encoder:
-  hidden_dims: [32, 64, 128]
+  hidden_dims: [32, 64, 128, 256]
+  dropout: 0.3
 
 vision_decoder:
   hidden_dims: [64, 32]
 
 audio_decoder:
-  hidden_dims: [128, 64, 32]
+  hidden_dims: [256, 128, 64, 32, 16]
