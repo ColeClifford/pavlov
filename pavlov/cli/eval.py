@@ -22,13 +22,16 @@ def main(cfg: DictConfig) -> None:
     from pavlov.evaluation.retrieval import evaluate_retrieval
     from pavlov.evaluation.sample_logging import log_samples_from_dataloader
     from pavlov.models.lightning_module import PavlovLightningModule
+    from pavlov.utils.checkpoint import load_model_from_checkpoint
 
-    # Load from checkpoint
+    # Load from checkpoint (handles torch.compile _orig_mod keys)
     if not hasattr(cfg, "checkpoint") or cfg.checkpoint is None:
         raise ValueError("Must specify +checkpoint=<path> to a model checkpoint.")
 
-    model = PavlovLightningModule.load_from_checkpoint(
-        cfg.checkpoint, weights_only=False
+    model = load_model_from_checkpoint(
+        PavlovLightningModule,
+        cfg.checkpoint,
+        weights_only=False,
     )
     model.eval()
 

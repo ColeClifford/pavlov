@@ -21,20 +21,29 @@ class AVMNISTDataset(Dataset):
 
     def __init__(self, split_dir: str | Path) -> None:
         split_dir = Path(split_dir)
-        # Load fully into memory (dataset is ~2.5 GB total) to avoid
-        # mmap per-sample I/O overhead and enable zero-copy tensor creation.
-        self.images = torch.from_numpy(np.load(split_dir / "images.npy"))
-        self.spectrograms = torch.from_numpy(np.load(split_dir / "spectrograms.npy"))
-        self.labels = torch.from_numpy(np.load(split_dir / "labels.npy")).long()
+        # Load fully into memory (no mmap) so per-sample access is a fast
+        # RAM-to-RAM copy instead of a disk page fault.  We keep the data as
+        # numpy arrays (not torch tensors) to avoid file-descriptor leaks:
+        # torch tensor slices share the backing storage, and PyTorch uses FDs
+        # to share storage across DataLoader worker processes via IPC.  With
+        # persistent_workers over many epochs the FDs accumulate and hit the
+        # OS limit.  Numpy arrays are pickled by value, sidestepping this.
+        self.images = np.load(split_dir / "images.npy")
+        self.spectrograms = np.load(split_dir / "spectrograms.npy")
+        self.labels = np.load(split_dir / "labels.npy")
 
     def __len__(self) -> int:
         return len(self.labels)
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
+        # .copy() creates a contiguous array that owns its memory, so the
+        # tensor returned by from_numpy won't hold a reference to the full
+        # backing array.  Because the data lives in RAM (not mmap), this is
+        # just a fast memcpy (~50 KB per sample).
         return {
-            "vision": self.images[idx],
-            "audio": self.spectrograms[idx],
-            "label": self.labels[idx],
+            "vision": torch.from_numpy(self.images[idx].copy()),
+            "audio": torch.from_numpy(self.spectrograms[idx].copy()),
+            "label": torch.tensor(self.labels[idx], dtype=torch.long),
         }
 
 
