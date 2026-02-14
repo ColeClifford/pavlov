@@ -17,6 +17,7 @@ def spectrogram_to_audio(
     n_mels: int = AVMNIST_N_MELS,
     n_fft: int = 2048,
     hop_length: int = 512,
+    target_duration: float = 0.7,
     ref_db: float = 0.0,
     min_db: float = -80.0,
 ) -> np.ndarray:
@@ -32,6 +33,10 @@ def spectrogram_to_audio(
         n_mels: Number of mel bands for inversion.
         n_fft: FFT size (must match mel computation).
         hop_length: Hop length (must match mel computation).
+        target_duration: Expected audio duration in seconds. The original FSDD
+            spectrograms (~30-50 time frames for 0.5-1.0s clips) were stretched
+            to 112 frames during dataset creation; this parameter controls the
+            time-axis resize during inversion so the output has the right speed.
         ref_db: Reference dB for denormalization (1.0 maps to this).
         min_db: Minimum dB for denormalization (0.0 maps to this).
 
@@ -54,10 +59,14 @@ def spectrogram_to_audio(
     # dB -> power
     mel_power = librosa.db_to_power(mel_db)
 
-    # Resize from (112, 112) to (n_mels, n_frames) for mel_to_audio
+    # Resize from (112, 112) to (n_mels, target_n_frames) for mel_to_audio.
+    # The original FSDD spectrograms had ~30-50 time frames (0.5-1.0s clips)
+    # that were stretched to 112 frames during dataset creation. We must
+    # compress the time axis back to a realistic frame count, otherwise
+    # mel_to_audio produces audio ~3x too long (slow-motion).
     h, w = mel_power.shape
-    n_frames = w  # Keep time dimension
-    zoom_factors = (n_mels / h, n_frames / w)
+    target_n_frames = max(1, int(target_duration * sr / hop_length))
+    zoom_factors = (n_mels / h, target_n_frames / w)
     mel_resized = zoom(mel_power, zoom_factors, order=1)
 
     # Invert mel to audio

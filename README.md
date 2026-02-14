@@ -17,7 +17,20 @@ Cross-modal:   z_v ──> W_dec ──> Decoder_a ──> CrossRecon_a  (vision
 - **W**: Shared encode projection (embed_dim -> latent_dim), learned jointly across modalities
 - **W_dec**: Shared decode projection (latent_dim -> embed_dim), separate learned layer
 - **R_v, R_a**: Modality-specific rotation matrices in SO(k), parameterized via skew-symmetric matrices in the Lie algebra so(k) and mapped to SO(k) via matrix exponential
-- **Training objective**: Same-modal reconstruction + cross-modal reconstruction + optional contrastive alignment + optional rotation orthogonality regularization
+- **Training objective**: Same-modal reconstruction + cross-modal reconstruction + contrastive alignment + optional rotation orthogonality regularization
+
+## Datasets
+
+Pavlov supports multiple audio-visual datasets of increasing difficulty. The dataset is selected via Hydra config.
+
+| Dataset | Classes | Samples | Vision Input | Audio Input | SOTA |
+|---------|---------|---------|-------------|-------------|------|
+| **AV-MNIST** (default) | 10 digits | ~70K | 1x28x28 grayscale (MNIST) | 1x112x112 mel spectrogram (FSDD) | ~99% |
+| **CREMA-D** | 6 emotions | ~7.4K | 1x64x64 grayscale (face frame) | 1x112x112 mel spectrogram | ~80% |
+
+**AV-MNIST** pairs handwritten digit images with spoken digit spectrograms from the Free Spoken Digit Dataset. It serves as the proof-of-concept benchmark.
+
+**CREMA-D** (Crowd-sourced Emotional Multimodal Actors Dataset) pairs facial video frames with spoken audio from 91 actors expressing 6 emotions (anger, disgust, fear, happiness, sadness, neutral). It is a significantly harder benchmark where both modalities carry meaningful but different emotional signals. Splits are done by actor to prevent data leakage.
 
 ## Installation
 
@@ -32,32 +45,43 @@ pip install -e ".[wandb]"
 
 ## Quick Start
 
-### 1. Download AV-MNIST data
+### 1. Download data
 
 ```bash
+# Download AV-MNIST (default)
 pavlov-download
+
+# Download CREMA-D (from HuggingFace — requires huggingface_hub + opencv-python)
+pavlov-download data=cremad
 ```
 
 ### 2. Train
 
 ```bash
-# Default config (TensorBoard logging)
+# AV-MNIST with default config (TensorBoard logging)
 pavlov-train
 
-# With config overrides
+# CREMA-D with the cremad experiment preset
+pavlov-train experiment=cremad
+
+# Or select data and model configs individually
+pavlov-train data=cremad model=cremad
+
+# Config overrides work as before
 pavlov-train training.max_epochs=50 model.latent_dim=64
 
 # With W&B logging
 pavlov-train training.logger=wandb training.wandb.project=my-project
-
-# With experiment preset
-pavlov-train +experiment=baseline
 ```
 
 ### 3. Evaluate
 
 ```bash
+# Evaluate an AV-MNIST checkpoint
 pavlov-eval +checkpoint=path/to/checkpoint.ckpt
+
+# Evaluate a CREMA-D checkpoint
+pavlov-eval data=cremad model=cremad +checkpoint=path/to/checkpoint.ckpt
 
 # Full diagnostic suite: samples, audio, rotation matrices, t-SNE, per-digit metrics
 pavlov-eval "+checkpoint=path/to/checkpoint.ckpt" +log_tensorboard=true
@@ -101,7 +125,7 @@ pavlov-demo --checkpoint path/to/checkpoint.ckpt
 pavlov-demo --share
 ```
 
-The app has two tabs — **Vision Input** and **Audio Input**. Click "New Sample" to pick a random test example and see the original input alongside its same-modal reconstruction and cross-modal reconstruction (e.g., image → synthesized audio spectrogram, or audio → reconstructed image).
+The app has two tabs -- **Vision Input** and **Audio Input**. Click "New Sample" to pick a random test example and see the original input alongside its same-modal reconstruction and cross-modal reconstruction (e.g., image to synthesized audio spectrogram, or audio to reconstructed image).
 
 ## Configuration
 
@@ -109,11 +133,17 @@ Pavlov uses [Hydra](https://hydra.cc/) for configuration management. All configs
 
 ```
 configs/
-  config.yaml            # Top-level defaults
-  model/default.yaml     # Model architecture
-  data/avmnist.yaml      # Dataset settings
-  training/default.yaml  # Training hyperparameters
-  experiment/baseline.yaml  # Experiment presets
+  config.yaml               # Top-level defaults (data=avmnist, model=default)
+  model/
+    default.yaml             # AV-MNIST model architecture
+    cremad.yaml              # CREMA-D model architecture (64x64 vision input)
+  data/
+    avmnist.yaml             # AV-MNIST dataset settings
+    cremad.yaml              # CREMA-D dataset settings
+  training/default.yaml      # Training hyperparameters + loss weights
+  experiment/
+    baseline.yaml            # AV-MNIST baseline experiment preset
+    cremad.yaml              # CREMA-D experiment preset
 ```
 
 ### Override examples
@@ -125,8 +155,8 @@ pavlov-train training.lr=5e-4 data.batch_size=128
 # Change embedding dimensions
 pavlov-train model.embed_dim=512 model.latent_dim=256
 
-# Enable contrastive loss
-pavlov-train training.loss_weights.contrastive=0.1
+# Adjust contrastive loss weight
+pavlov-train training.loss_weights.contrastive=1.0
 
 # Disable orthogonality regularization
 pavlov-train training.loss_weights.orthogonality=0.0
@@ -139,10 +169,13 @@ pavlov/
   models/
     pavlov_model.py      # Core model: shared embeddings + rotation conditioning
     lightning_module.py   # PyTorch Lightning training wrapper
-    encoders.py          # Modality-specific encoders
-    decoders.py          # Modality-specific decoders
+    encoders.py          # Modality-specific encoders (parameterized by input size)
+    decoders.py          # Modality-specific decoders (parameterized by output size)
   data/
+    __init__.py          # Dataset factory: build_datamodule(cfg)
     avmnist.py           # AV-MNIST data module (MNIST images + spoken digits)
+    cremad.py            # CREMA-D data module (facial frames + emotion audio)
+    download.py          # AV-MNIST download and preparation pipeline
   utils/
     rotation.py          # Lie algebra so(d) -> SO(d) rotation utilities
   losses.py              # Reconstruction, contrastive, and orthogonality losses
@@ -154,7 +187,7 @@ pavlov/
     train.py             # Training entry point
     eval.py              # Evaluation entry point
     viz.py               # Visualization entry point
-    download_data.py     # Data download script
+    download_data.py     # Data download script (supports all datasets)
     demo.py              # Interactive Gradio demo
 configs/
   ...                    # Hydra configuration files
@@ -164,8 +197,23 @@ configs/
 
 - **Cross-modal transfer**: Train a linear classifier on vision embeddings, test on audio embeddings (and vice versa). High transfer accuracy indicates modality-invariant representations.
 - **Cross-modal retrieval**: Given a query from one modality, retrieve nearest neighbors in the other modality. Measured by Recall@K and Mean Average Precision.
-- **t-SNE visualization**: Embeddings colored by digit class with different markers per modality. Well-aligned modalities show overlapping clusters.
+- **t-SNE visualization**: Embeddings colored by class with different markers per modality. Well-aligned modalities show overlapping clusters.
 - **Missing-modality robustness**: Evaluate performance when one modality is absent at test time.
+
+## Adding a New Dataset
+
+1. **Create a data module** in `pavlov/data/` following the pattern of `avmnist.py` or `cremad.py`. Your `DataModule` must return batches as dicts with `"vision"`, `"audio"`, and `"label"` keys.
+
+2. **Register it** in `pavlov/data/__init__.py`:
+   ```python
+   elif dataset_name == "my_dataset":
+       from pavlov.data.my_dataset import MyDataModule
+       return MyDataModule(**cfg.data)
+   ```
+
+3. **Create configs** in `configs/data/my_dataset.yaml` and `configs/model/my_dataset.yaml`. Set `vision_encoder.input_size` and `vision_decoder.output_size` to match your vision input resolution.
+
+4. **Download**: Add a branch to `pavlov/cli/download_data.py` for the new dataset.
 
 ## Adding a New Modality
 
