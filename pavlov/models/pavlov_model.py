@@ -51,19 +51,39 @@ class PavlovModel(nn.Module):
         """
         return skew_symmetric_to_rotation(self.rotation_params[modality], self.latent_dim)
 
-    def encode(self, x: torch.Tensor, modality: str) -> torch.Tensor:
+    def compute_rotations(self, modalities: list[str] | None = None) -> dict[str, torch.Tensor]:
+        """Pre-compute rotation matrices for all (or given) modalities.
+
+        Call once per step and pass the result to encode/decode to avoid
+        redundant matrix_exp computations.
+
+        Returns:
+            Dict mapping modality name to its rotation matrix.
+        """
+        if modalities is None:
+            modalities = self.modalities
+        return {m: self.get_rotation(m) for m in modalities}
+
+    def encode(
+        self,
+        x: torch.Tensor,
+        modality: str,
+        rotation: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Encode raw input to modality-conditioned latent representation.
 
         Args:
             x: Raw input tensor for the given modality.
             modality: The modality name ("vision" or "audio").
+            rotation: Optional pre-computed rotation matrix. If None, computed
+                on the fly (less efficient when called multiple times per step).
 
         Returns:
             z_m of shape (batch, latent_dim).
         """
         tokens = self.encoders[modality](x)  # (batch, embed_dim)
         z_shared = self.W(tokens)  # (batch, latent_dim)
-        R = self.get_rotation(modality)  # (latent_dim, latent_dim)
+        R = rotation if rotation is not None else self.get_rotation(modality)
         z_m = z_shared @ R.T  # (batch, latent_dim)
         return z_m
 
@@ -92,9 +112,12 @@ class PavlovModel(nn.Module):
             Nested dict: result[source_modality][target_modality] = reconstructed tensor.
             Also includes "z" key: result["z"][modality] = latent embedding.
         """
+        # Pre-compute rotations once for the entire forward pass
+        rotations = self.compute_rotations(list(inputs.keys()))
+
         latents = {}
         for modality, x in inputs.items():
-            latents[modality] = self.encode(x, modality)
+            latents[modality] = self.encode(x, modality, rotation=rotations[modality])
 
         reconstructions = {}
         for src_mod, z in latents.items():

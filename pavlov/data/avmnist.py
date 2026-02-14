@@ -21,18 +21,20 @@ class AVMNISTDataset(Dataset):
 
     def __init__(self, split_dir: str | Path) -> None:
         split_dir = Path(split_dir)
-        self.images = np.load(split_dir / "images.npy", mmap_mode="r")
-        self.spectrograms = np.load(split_dir / "spectrograms.npy", mmap_mode="r")
-        self.labels = np.load(split_dir / "labels.npy")
+        # Load fully into memory (dataset is ~2.5 GB total) to avoid
+        # mmap per-sample I/O overhead and enable zero-copy tensor creation.
+        self.images = torch.from_numpy(np.load(split_dir / "images.npy"))
+        self.spectrograms = torch.from_numpy(np.load(split_dir / "spectrograms.npy"))
+        self.labels = torch.from_numpy(np.load(split_dir / "labels.npy")).long()
 
     def __len__(self) -> int:
         return len(self.labels)
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         return {
-            "vision": torch.from_numpy(self.images[idx].copy()),
-            "audio": torch.from_numpy(self.spectrograms[idx].copy()),
-            "label": torch.tensor(self.labels[idx], dtype=torch.long),
+            "vision": self.images[idx],
+            "audio": self.spectrograms[idx],
+            "label": self.labels[idx],
         }
 
 
@@ -73,32 +75,38 @@ class AVMNISTDataModule(pl.LightningDataModule):
         if stage == "test" or stage is None:
             self.test_dataset = AVMNISTDataset(avmnist_dir / "test")
 
+    def _loader_kwargs(self) -> dict:
+        """Common DataLoader keyword arguments for performance."""
+        kwargs: dict = {
+            "batch_size": self.batch_size,
+            "num_workers": self.num_workers,
+            "pin_memory": True,
+        }
+        if self.num_workers > 0:
+            kwargs["persistent_workers"] = True
+            kwargs["prefetch_factor"] = 4
+        return kwargs
+
     def train_dataloader(self) -> DataLoader:
         assert self.train_dataset is not None
         return DataLoader(
             self.train_dataset,
-            batch_size=self.batch_size,
             shuffle=True,
-            num_workers=self.num_workers,
-            pin_memory=True,
+            **self._loader_kwargs(),
         )
 
     def val_dataloader(self) -> DataLoader:
         assert self.val_dataset is not None
         return DataLoader(
             self.val_dataset,
-            batch_size=self.batch_size,
             shuffle=False,
-            num_workers=self.num_workers,
-            pin_memory=True,
+            **self._loader_kwargs(),
         )
 
     def test_dataloader(self) -> DataLoader:
         assert self.test_dataset is not None
         return DataLoader(
             self.test_dataset,
-            batch_size=self.batch_size,
             shuffle=False,
-            num_workers=self.num_workers,
-            pin_memory=True,
+            **self._loader_kwargs(),
         )

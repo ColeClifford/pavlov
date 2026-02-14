@@ -1,6 +1,9 @@
 max_epochs: 100
 lr: 1e-3
 weight_decay: 1e-5
+precision: bf16-mixed
+accumulate_grad_batches: 1
+compile_model: true
 
 # Log sample reconstructions to TensorBoard every N validation epochs (1 = every epoch)
 log_samples_every_n_epochs: 1

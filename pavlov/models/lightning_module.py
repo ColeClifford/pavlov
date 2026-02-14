@@ -43,17 +43,20 @@ class PavlovLightningModule(pl.LightningModule):
         self.w_ortho = lw.orthogonality
 
     def _shared_step(self, batch: dict, prefix: str) -> torch.Tensor:
-        # Encode all modalities
+        # Pre-compute rotation matrices once per step to avoid redundant
+        # matrix_exp calls (saves ~2x matrix_exp per modality per step).
+        modality_keys = [m for m in self.modalities if m in batch]
+        rotations = self.model.compute_rotations(modality_keys)
+
+        # Encode all modalities using cached rotations
         z = {}
-        for m in self.modalities:
-            if m in batch:
-                z[m] = self.model.encode(batch[m], m)
+        for m in modality_keys:
+            z[m] = self.model.encode(batch[m], m, rotation=rotations[m])
 
         total_loss = torch.tensor(0.0, device=self.device)
 
         # Same-modal reconstruction
         same_loss = torch.tensor(0.0, device=self.device)
-        modality_keys = list(z.keys())
         for m in modality_keys:
             x_recon = self.model.decode(z[m], m)
             mse = reconstruction_loss(x_recon, batch[m])
@@ -86,10 +89,10 @@ class PavlovLightningModule(pl.LightningModule):
             total_loss = total_loss + self.w_contrastive * c_loss
             self.log(f"{prefix}/contrastive", c_loss, prog_bar=False)
 
-        # Optional orthogonality loss
+        # Optional orthogonality loss (reuse pre-computed rotations)
         if self.w_ortho > 0:
-            rotations = [self.model.get_rotation(m) for m in modality_keys]
-            o_loss = orthogonality_loss(rotations)
+            rotation_list = [rotations[m] for m in modality_keys]
+            o_loss = orthogonality_loss(rotation_list)
             total_loss = total_loss + self.w_ortho * o_loss
             self.log(f"{prefix}/orthogonality", o_loss, prog_bar=False)
 

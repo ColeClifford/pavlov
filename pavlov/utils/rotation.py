@@ -1,4 +1,14 @@
+from __future__ import annotations
+
+from functools import lru_cache
+
 import torch
+
+
+@lru_cache(maxsize=16)
+def _triu_indices(dim: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """Cached upper-triangular indices (CPU) to avoid recomputing each call."""
+    return torch.triu_indices(dim, dim, offset=1)
 
 
 def skew_symmetric_to_rotation(params: torch.Tensor, dim: int) -> torch.Tensor:
@@ -7,6 +17,9 @@ def skew_symmetric_to_rotation(params: torch.Tensor, dim: int) -> torch.Tensor:
     Constructs a skew-symmetric matrix A from the parameter vector and returns
     the rotation matrix R = matrix_exp(A). This parameterization guarantees R
     is always a valid rotation matrix (orthogonal with determinant +1).
+
+    Uses vectorized index assignment instead of a Python loop for performance
+    (e.g. ~8128 iterations avoided for dim=128).
 
     Args:
         params: Vector of shape (d*(d-1)//2,) -- the free parameters.
@@ -21,11 +34,10 @@ def skew_symmetric_to_rotation(params: torch.Tensor, dim: int) -> torch.Tensor:
     )
 
     A = torch.zeros(dim, dim, dtype=params.dtype, device=params.device)
-    idx = 0
-    for i in range(dim):
-        for j in range(i + 1, dim):
-            A[i, j] = params[idx]
-            A[j, i] = -params[idx]
-            idx += 1
+    rows, cols = _triu_indices(dim)
+    rows = rows.to(params.device)
+    cols = cols.to(params.device)
+    A[rows, cols] = params
+    A[cols, rows] = -params
 
     return torch.linalg.matrix_exp(A)
