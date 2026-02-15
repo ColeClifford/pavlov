@@ -58,7 +58,8 @@ def main(cfg: DictConfig) -> None:
             monitor="val/total_loss",
             mode="min",
             save_top_k=3,
-            filename="pavlov-{epoch:02d}-{val/total_loss:.4f}",
+            filename="pavlov-{epoch:02d}-{val_total_loss:.4f}",
+            auto_insert_metric_name=False,
         ),
     ]
 

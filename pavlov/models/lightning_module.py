@@ -97,6 +97,9 @@ class PavlovLightningModule(pl.LightningModule):
             self.log(f"{prefix}/orthogonality", o_loss, prog_bar=False)
 
         self.log(f"{prefix}/total_loss", total_loss, prog_bar=True)
+        # Log with underscore separator for safe use in checkpoint filenames
+        # (the '/' in 'val/total_loss' creates subdirectories when used in filenames)
+        self.log(f"{prefix}_total_loss", total_loss, prog_bar=False)
         return total_loss
 
     def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
