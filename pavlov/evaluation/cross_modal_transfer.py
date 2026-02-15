@@ -5,6 +5,7 @@ from __future__ import annotations
 import torch
 import numpy as np
 from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader
 
 
@@ -16,6 +17,10 @@ def evaluate_cross_modal_transfer(
     test_modality: str,
 ) -> dict[str, float]:
     """Train a linear classifier on embeddings from one modality, evaluate on another.
+
+    Embeddings are standardized (zero mean, unit variance) before fitting
+    to ensure the logistic regression probe converges reliably regardless
+    of the embedding scale.
 
     Args:
         model: PavlovModel (or LightningModule with .model attribute).
@@ -50,16 +55,22 @@ def evaluate_cross_modal_transfer(
     test_embeddings = np.concatenate(test_embeddings, axis=0)
     labels = np.concatenate(labels, axis=0)
 
-    clf = LogisticRegression(max_iter=1000, solver="lbfgs")
-    clf.fit(train_embeddings, labels)
+    # Standardize embeddings for reliable convergence
+    scaler = StandardScaler()
+    train_scaled = scaler.fit_transform(train_embeddings)
+    test_scaled = scaler.transform(test_embeddings)
 
-    train_accuracy = clf.score(train_embeddings, labels)
-    transfer_accuracy = clf.score(test_embeddings, labels)
+    clf = LogisticRegression(max_iter=5000, solver="lbfgs")
+    clf.fit(train_scaled, labels)
 
-    # Per-class transfer accuracy
-    test_preds = clf.predict(test_embeddings)
+    train_accuracy = clf.score(train_scaled, labels)
+    transfer_accuracy = clf.score(test_scaled, labels)
+
+    # Per-class transfer accuracy (derive classes from data, not hardcoded)
+    test_preds = clf.predict(test_scaled)
+    unique_classes = sorted(set(labels))
     per_class: dict[int, float] = {}
-    for c in range(10):
+    for c in unique_classes:
         mask = labels == c
         if mask.sum() > 0:
             per_class[c] = (test_preds[mask] == labels[mask]).mean().item()

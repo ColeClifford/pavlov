@@ -76,16 +76,16 @@ def evaluate_retrieval(
     ap = (precision_at_i * relevant).sum(dim=1) / relevant.sum(dim=1).clamp(min=1)
     mean_ap = ap.mean().item()
 
-    # Per-class Recall@K
+    # Per-class Recall@K (derive classes from data, not hardcoded)
     per_class_recall: dict[int, float] = {}
-    for c in range(10):
+    for c in labels.unique().tolist():
         mask = query_labels.squeeze(1) == c
         if mask.sum() > 0:
-            per_class_recall[c] = (
+            per_class_recall[int(c)] = (
                 relevant[mask, :k].sum(dim=1).clamp(max=1).mean().item()
             )
         else:
-            per_class_recall[c] = 0.0
+            per_class_recall[int(c)] = 0.0
 
     return {
         f"recall_at_{k}": recall_at_k,

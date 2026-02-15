@@ -4,10 +4,16 @@ defaults:
   - /model: cremad
 
 training:
-  max_epochs: 100
-  lr: 1e-3
+  max_epochs: 200
+  lr: 5e-4
+  warmup_epochs: 10
   loss_weights:
     same_modal_recon: 1.0
     cross_modal_recon: 1.0
-    contrastive: 0.5
+    # Contrastive is the key driver of cross-modal alignment.
+    # CREMA-D needs a higher weight than AV-MNIST because:
+    #   - 10x fewer samples (7.4K vs 70K)
+    #   - Emotions are more subtle than digits
+    #   - Higher-dim inputs produce noisier reconstruction gradients
+    contrastive: 2.0
     orthogonality: 0.01
