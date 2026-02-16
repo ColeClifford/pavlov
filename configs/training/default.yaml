@@ -24,4 +24,4 @@ logger: tensorboard
 
 wandb:
   project: pavlov
-  entity: null
+  entity: cole-cliffy-n-a
